@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"log"
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/swarm"
@@ -30,5 +31,6 @@ func main() {
 		GlobalNodes[n.ID] = node
 	}
 
+	log.Println("started")
 	SetupServer()
 }

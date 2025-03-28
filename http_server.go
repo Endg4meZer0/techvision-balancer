@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 )
 
@@ -22,6 +23,7 @@ func SetupServer() {
 }
 
 func onGet(w http.ResponseWriter, r *http.Request) {
+	log.Println("received onGet (/get)")
 	res, err := GlobalNodes.Get()
 	if err != nil {
 		errResp, _ := json.Marshal(ErrorResponse{"an error occurred: " + err.Error()})
@@ -35,6 +37,8 @@ func onGet(w http.ResponseWriter, r *http.Request) {
 }
 
 func onAddTask(w http.ResponseWriter, r *http.Request) {
+	log.Println("received onAddTask (/addTask)")
+
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		errResp, _ := json.Marshal(ErrorResponse{"body is not readable"})
@@ -42,6 +46,7 @@ func onAddTask(w http.ResponseWriter, r *http.Request) {
 		w.Write(errResp)
 		return
 	}
+	log.Println("onAddTask body: " + string(body))
 
 	var input JsonInput
 	err = json.Unmarshal(body, &input)
@@ -67,6 +72,8 @@ func onAddTask(w http.ResponseWriter, r *http.Request) {
 }
 
 func onRemoveTask(w http.ResponseWriter, r *http.Request) {
+	log.Println("received onRemoveTask (/removeTask)")
+
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		errResp, _ := json.Marshal(ErrorResponse{"body is not readable"})
@@ -74,6 +81,7 @@ func onRemoveTask(w http.ResponseWriter, r *http.Request) {
 		w.Write(errResp)
 		return
 	}
+	log.Println("onRemoveTask body: " + string(body))
 
 	var input JsonInput
 	err = json.Unmarshal(body, &input)
