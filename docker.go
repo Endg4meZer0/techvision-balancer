@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"time"
 
 	"techvision/balancer/tasks"
 
@@ -48,31 +49,45 @@ func (nodes Nodes) AddTask(taskId string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	nodeCount := 0
 	contCount := 0
 	failedCount := 0
-	usedNodes := make([]string, 0, len(tskl))
 	for _, tsk := range tskl {
 		if tsk.Status.State == swarm.TaskStateFailed || tsk.Status.State == swarm.TaskStateRejected {
 			failedCount++
 			continue
 		}
-
-		for nodeID := range nodes {
-			if nodeID == tsk.NodeID {
-				nodes[nodeID].Containers[tsk.Status.ContainerStatus.ContainerID] = Container{
-					TaskID: taskId,
-				}
-				if !slices.Contains(usedNodes, nodeID) {
-					usedNodes = append(usedNodes, nodeID)
-					nodeCount++
-				}
-			}
-		}
 		contCount++
 	}
 
-	return fmt.Sprintf("task started successfully, nodes/containers used: %v/%v; failed containers: %v", nodeCount, contCount, failedCount), err
+	go func() {
+		for len(tskl) > 0 {
+			time.Sleep(5 * time.Second)
+			newTskl, err := DockerClient.TaskList(context.Background(), types.TaskListOptions{
+				Filters: filters.NewArgs(filters.Arg(
+					"service", serv.ID,
+				)),
+			})
+			if err != nil {
+				continue
+			}
+			for _, tsk := range newTskl {
+				if tsk.Status.State != swarm.TaskStateRunning {
+					continue
+				}
+
+				for nodeID := range nodes {
+					if nodeID == tsk.NodeID {
+						nodes[nodeID].Containers[tsk.Status.ContainerStatus.ContainerID] = Container{
+							TaskID: taskId,
+						}
+					}
+				}
+				tskl = slices.DeleteFunc(tskl, func(tsk1 swarm.Task) bool { return tsk1.ID == tsk.ID })
+			}
+		}
+	}()
+
+	return fmt.Sprintf("task launched successfully, containers total/already failed: %v/%v; MAY STILL BE PENDING, check /get later", contCount, failedCount), err
 }
 
 func (nodes Nodes) RemoveTask(taskId string) (string, error) {
