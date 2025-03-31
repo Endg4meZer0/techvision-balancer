@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"techvision/balancer/docker"
 )
 
 type ErrorResponse struct {
@@ -24,7 +25,7 @@ func SetupServer() {
 
 func onGet(w http.ResponseWriter, r *http.Request) {
 	log.Println("received onGet (/get)")
-	res, err := GlobalNodes.Get()
+	res, err := docker.Get()
 	if err != nil {
 		errResp, _ := json.Marshal(ErrorResponse{"an error occurred: " + err.Error()})
 		w.WriteHeader(http.StatusInternalServerError)
@@ -57,7 +58,7 @@ func onAddTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := GlobalNodes.AddTask(input.TaskId)
+	res, err := docker.AddTask(input.TaskId)
 	if err != nil {
 		errResp, _ := json.Marshal(ErrorResponse{"an error occurred: " + err.Error()})
 		w.WriteHeader(http.StatusInternalServerError)
@@ -92,7 +93,7 @@ func onRemoveTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := GlobalNodes.RemoveTask(input.TaskId)
+	res, err := docker.RemoveTask(input.TaskId)
 	if err != nil {
 		errResp, _ := json.Marshal(ErrorResponse{"an error occurred: " + err.Error()})
 		w.WriteHeader(http.StatusInternalServerError)

@@ -1,0 +1,4 @@
+nodes:
+- ip: 10.61.32.19
+  port: 2375
+  max_containers: 2
