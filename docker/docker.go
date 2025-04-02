@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"time"
 
 	"techvision/balancer/global"
 	"techvision/balancer/tasks"
@@ -21,7 +22,7 @@ func Get() (string, error) {
 	return global.GNodes.ToJSON(), nil
 }
 
-func AddTask(taskId string) (string, error) {
+func AddTask(taskId string) (any, error) {
 	tsk, ok := tasks.Tasks[taskId]
 	if !ok {
 		return "", errors.New("task spec not found")
@@ -74,16 +75,22 @@ func AddTask(taskId string) (string, error) {
 			if err != nil {
 				return "", errors.New("host port is not a number")
 			}
-			checkForInternalCollisions := func() bool {
-				for _, hBind := range hostBinds {
-					if hBind.HostPort == hostBind.HostPort {
-						return true
+			checkForInternalCollisions := func(hostPort uint16) bool {
+				for p, hBind := range spec.ContainerHostConfig.PortBindings {
+					if p == portBind {
+						continue
+					}
+
+					for _, binds := range hBind {
+						if binds.HostPort == strconv.FormatUint(uint64(hostPort), 10) {
+							return true
+						}
 					}
 				}
 				return false
 			}
 
-			for chosenNode.IsPortTaken(uint16(hostPort)) || checkForInternalCollisions() {
+			for chosenNode.IsPortTaken(uint16(hostPort)) || checkForInternalCollisions(uint16(hostPort)) {
 				hostPort++
 			}
 			hostBind.HostPort = strconv.FormatUint(hostPort, 10)
@@ -103,10 +110,12 @@ func AddTask(taskId string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	time.Sleep(1 * time.Second)
 	err = chosenNode.Client.ContainerStart(context.Background(), cnt.ID, container.StartOptions{})
 	if err != nil {
 		return "", err
 	}
+	time.Sleep(1 * time.Second)
 	cntSums, err := chosenNode.Client.ContainerList(context.Background(), container.ListOptions{
 		All: true,
 		Filters: filters.NewArgs(
@@ -133,37 +142,71 @@ func AddTask(taskId string) (string, error) {
 				break
 			}
 			if cnt.State.Running {
-				tsk.PostAction(host, cnt.ID, nil)
+				go tsk.PostAction(host, cnt.ID, nil)
 				break
 			}
 		}
 		Active = false
 	}()
 
-	return fmt.Sprintf("task launched successfully, container id: %s; MAY STILL BE PENDING, check /get later", cnt.ID), err
+	return struct {
+		Status      string `json:"status"`
+		ContainerID string `json:"container_id"`
+	}{fmt.Sprintf("task launched successfully; MAY STILL BE PENDING, you may want to check /get later"), cnt.ID}, err
 }
 
-func RemoveTask(taskId string) (string, error) {
-	for nHost, node := range global.GNodes.N {
-		for _, cont := range node.Containers {
-			if cont.TaskID == taskId {
-				err := node.Client.ContainerStop(context.Background(), cont.Spec.ID, container.StopOptions{})
-				if err != nil {
-					return "", err
-				}
-				err = node.Client.ContainerRemove(context.Background(), cont.Spec.ID, container.RemoveOptions{
+func RemoveTask(input string) (any, error) {
+	global.GNodes.M.Lock()
+	defer global.GNodes.M.Unlock()
+
+	for nHost := range global.GNodes.N {
+		for contId, cont := range global.GNodes.N[nHost].Containers {
+			if cont.TaskID == input {
+				err := global.GNodes.N[nHost].Client.ContainerRemove(context.Background(), contId, container.RemoveOptions{
 					Force: true,
 				})
 				if err != nil {
 					return "", err
 				}
-				delete(node.Containers, cont.Spec.ID)
+				delete(global.GNodes.N[nHost].Containers, contId)
 			}
 		}
-		global.GNodes.N[nHost] = node
 	}
 
-	return "successfully removed task", nil
+	return struct {
+		Status string `json:"status"`
+		TaskID string `json:"task_id"`
+	}{"successfully removed all containers associated with task", input}, nil
+}
+
+func RemoveContainer(input string) (any, error) {
+	global.GNodes.M.Lock()
+	defer global.GNodes.M.Unlock()
+
+	for nHost := range global.GNodes.N {
+		for cntId := range global.GNodes.N[nHost].Containers {
+			if cntId == input {
+				err := global.GNodes.N[nHost].Client.ContainerRemove(
+					context.Background(),
+					cntId,
+					container.RemoveOptions{
+						Force: true,
+					},
+				)
+				if err != nil {
+					return "", err
+				}
+				delete(global.GNodes.N[nHost].Containers, cntId)
+
+				return struct {
+					Status      string `json:"status"`
+					ContainerID string `json:"container_id"`
+				}{"successfully removed container", cntId}, nil
+			}
+		}
+	}
+
+	return "", errors.New("container not found")
 }
 
 func OnUpdate() {

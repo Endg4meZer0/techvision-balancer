@@ -15,33 +15,33 @@ var UpdateTicker *time.Ticker = time.NewTicker(time.Second * 10)
 func init() {
 	go func() {
 		for {
-			select {
-			case <-UpdateTicker.C:
-				// Update nodes
-				global.GNodes.M.Lock()
-				defer global.GNodes.M.Unlock()
+			<-UpdateTicker.C
+			// Update nodes
+			global.GNodes.M.Lock()
 
-				for nodeID := range global.GNodes.N {
-					node := global.GNodes.N[nodeID]
-					containers, err := node.Client.ContainerList(context.Background(), container.ListOptions{
-						All: true,
-					})
-					if err != nil {
-						continue
+			for nodeID := range global.GNodes.N {
+				node := global.GNodes.N[nodeID]
+				containers, err := node.Client.ContainerList(context.Background(), container.ListOptions{
+					All: true,
+				})
+				if err != nil {
+					continue
+				}
+				for _, cont := range containers {
+					if cnt, ok := node.Containers[cont.ID]; ok {
+						cnt.Spec = cont
+						node.Containers[cont.ID] = cnt
 					}
-					for _, cont := range containers {
-						if cnt, ok := node.Containers[cont.ID]; ok {
-							cnt.Spec = cont
-							node.Containers[cont.ID] = cnt
-						}
-					}
+				}
 
-					global.GNodes.N[nodeID] = node
-				}
-				docker.OnUpdate()
-				for _, task := range tasks.Tasks {
-					task.OnUpdate()
-				}
+				global.GNodes.N[nodeID] = node
+			}
+
+			global.GNodes.M.Unlock()
+
+			docker.OnUpdate()
+			for _, task := range tasks.Tasks {
+				task.OnUpdate()
 			}
 		}
 	}()

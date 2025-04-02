@@ -121,14 +121,15 @@ func (t TaskStartCV) PostAction(host string, containerID string, data interface{
 					break
 				}
 			}
+			actualHost := strings.Split(host, ":")[0]
 
 			if data == nil {
-				_, err := http.Post(fmt.Sprintf("https://%s:%v/create", host, extPort), "application/json", strings.NewReader(jsonToTransfer))
+				_, err := http.Post(fmt.Sprintf("http://%s:%v/create", actualHost, extPort), "application/json", strings.NewReader(jsonToTransfer))
 				if err != nil {
 					return err
 				}
 			} else {
-				_, err := http.Post(fmt.Sprintf("https://%s:%v/create", host, extPort), "application/json", strings.NewReader(data.(string)))
+				_, err := http.Post(fmt.Sprintf("http://%s:%v/create", actualHost, extPort), "application/json", strings.NewReader(data.(string)))
 				if err != nil {
 					return err
 				}
