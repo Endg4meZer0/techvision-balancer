@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"techvision/balancer/global"
@@ -110,9 +110,12 @@ func AddTask(taskID string, taskData global.JSONData) (any, error) {
 	newName := spec.Name
 	attempt := 0
 	for _, v := range cntSums {
-		if slices.Contains(v.Names, newName) {
-			newName = fmt.Sprintf("%s.%v", spec.Name, attempt)
-			attempt++
+		for _, cntName := range v.Names {
+			if strings.Contains(cntName, newName) {
+				newName = fmt.Sprintf("%s.%v", spec.Name, attempt)
+				attempt++
+				break
+			}
 		}
 	}
 	spec.Name = newName
