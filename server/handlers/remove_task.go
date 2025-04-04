@@ -25,6 +25,8 @@ func RemoveTask(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Println("onRemoveTask body: " + string(body))
 
+	body = global.DoubleEscapeCheck(body)
+
 	var input removeTaskJSONInput
 	err = json.Unmarshal(body, &input)
 	if err != nil {
