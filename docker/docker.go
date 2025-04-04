@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"time"
 
@@ -15,15 +16,12 @@ import (
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
-var waitChan = make(chan bool)
-var Active = false
-
 func Get() (string, error) {
 	return global.GNodes.ToJSON(), nil
 }
 
-func AddTask(taskId string) (any, error) {
-	tsk, ok := tasks.Tasks[taskId]
+func AddTask(taskID string, taskData global.JSONData) (any, error) {
+	tsk, ok := tasks.Tasks[taskID]
 	if !ok {
 		return "", errors.New("task spec not found")
 	}
@@ -64,6 +62,9 @@ func AddTask(taskId string) (any, error) {
 		host = nHost
 		break
 	}
+	if chosenNode.Client == nil {
+		return "", errors.New("no free nodes for this task")
+	}
 
 	spec := tsk.GetSpec()
 
@@ -99,6 +100,24 @@ func AddTask(taskId string) (any, error) {
 		spec.ContainerHostConfig.PortBindings[portBind] = hostBinds
 	}
 
+	// Check for name conflicts
+	cntSums, err := chosenNode.Client.ContainerList(context.Background(), container.ListOptions{
+		All: true,
+	})
+	if err != nil {
+		return "", nil
+	}
+	newName := spec.Name
+	attempt := 0
+	for _, v := range cntSums {
+		if slices.Contains(v.Names, newName) {
+			newName = fmt.Sprintf("%s.%v", spec.Name, attempt)
+			attempt++
+		}
+	}
+	spec.Name = newName
+
+	// Create the container associated with the task
 	cnt, err := chosenNode.Client.ContainerCreate(
 		context.Background(),
 		&spec.ContainerConfig,
@@ -110,14 +129,14 @@ func AddTask(taskId string) (any, error) {
 	if err != nil {
 		return "", err
 	}
-	time.Sleep(1 * time.Second)
+
 	err = chosenNode.Client.ContainerStart(context.Background(), cnt.ID, container.StartOptions{})
 	if err != nil {
 		return "", err
 	}
-	time.Sleep(1 * time.Second)
-	cntSums, err := chosenNode.Client.ContainerList(context.Background(), container.ListOptions{
-		All: true,
+
+	cntSums, err = chosenNode.Client.ContainerList(context.Background(), container.ListOptions{
+		All: false,
 		Filters: filters.NewArgs(
 			filters.Arg("id", cnt.ID),
 		),
@@ -126,33 +145,35 @@ func AddTask(taskId string) (any, error) {
 		return "", err
 	}
 
-	chosenNode.Containers[cnt.ID] = global.Container{
-		TaskID: taskId,
+	id := fmt.Sprintf("%s_%s", taskID, cnt.ID)
+
+	chosenNode.Containers[id] = global.Container{
+		TaskID: taskID,
 		Spec:   cntSums[0],
 	}
 
 	global.GNodes.N[host] = chosenNode
 
 	go func() {
-		Active = true
+		t := time.NewTicker(3 * time.Second)
 		for {
-			<-waitChan
+			<-t.C
 			cnt, err := chosenNode.Client.ContainerInspect(context.Background(), cnt.ID)
 			if err != nil {
 				break
 			}
 			if cnt.State.Running {
-				go tsk.PostAction(host, cnt.ID, nil)
+				go tsk.PostAction(host, id, taskData.PostStart)
 				break
 			}
 		}
-		Active = false
+		t.Stop()
 	}()
 
 	return struct {
-		Status      string `json:"status"`
-		ContainerID string `json:"container_id"`
-	}{fmt.Sprintf("task launched successfully; MAY STILL BE PENDING, you may want to check /get later"), cnt.ID}, err
+		Status string `json:"status"`
+		ID     string `json:"id"`
+	}{fmt.Sprintf("task launched successfully; MAY STILL BE PENDING, you may want to check /get later"), id}, err
 }
 
 func RemoveTask(input string) (any, error) {
@@ -160,35 +181,11 @@ func RemoveTask(input string) (any, error) {
 	defer global.GNodes.M.Unlock()
 
 	for nHost := range global.GNodes.N {
-		for contId, cont := range global.GNodes.N[nHost].Containers {
-			if cont.TaskID == input {
-				err := global.GNodes.N[nHost].Client.ContainerRemove(context.Background(), contId, container.RemoveOptions{
-					Force: true,
-				})
-				if err != nil {
-					return "", err
-				}
-				delete(global.GNodes.N[nHost].Containers, contId)
-			}
-		}
-	}
-
-	return struct {
-		Status string `json:"status"`
-		TaskID string `json:"task_id"`
-	}{"successfully removed all containers associated with task", input}, nil
-}
-
-func RemoveContainer(input string) (any, error) {
-	global.GNodes.M.Lock()
-	defer global.GNodes.M.Unlock()
-
-	for nHost := range global.GNodes.N {
-		for cntId := range global.GNodes.N[nHost].Containers {
-			if cntId == input {
+		for id := range global.GNodes.N[nHost].Containers {
+			if id == input {
 				err := global.GNodes.N[nHost].Client.ContainerRemove(
 					context.Background(),
-					cntId,
+					global.GNodes.N[nHost].Containers[id].Spec.ID,
 					container.RemoveOptions{
 						Force: true,
 					},
@@ -196,21 +193,16 @@ func RemoveContainer(input string) (any, error) {
 				if err != nil {
 					return "", err
 				}
-				delete(global.GNodes.N[nHost].Containers, cntId)
+
+				delete(global.GNodes.N[nHost].Containers, id)
 
 				return struct {
-					Status      string `json:"status"`
-					ContainerID string `json:"container_id"`
-				}{"successfully removed container", cntId}, nil
+					Status string `json:"status"`
+					ID     string `json:"id"`
+				}{"successfully removed task", id}, nil
 			}
 		}
 	}
 
-	return "", errors.New("container not found")
-}
-
-func OnUpdate() {
-	if Active {
-		waitChan <- true
-	}
+	return "", errors.New("task not found")
 }

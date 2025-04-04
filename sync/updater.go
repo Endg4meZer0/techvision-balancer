@@ -2,35 +2,36 @@ package sync
 
 import (
 	"context"
-	"techvision/balancer/docker"
+	"strings"
 	"techvision/balancer/global"
-	"techvision/balancer/tasks"
 	"time"
 
 	"github.com/docker/docker/api/types/container"
 )
 
-var UpdateTicker *time.Ticker = time.NewTicker(time.Second * 10)
+var UpdateTicker *time.Ticker = time.NewTicker(time.Second * 5)
 
 func init() {
 	go func() {
 		for {
 			<-UpdateTicker.C
-			// Update nodes
 			global.GNodes.M.Lock()
 
+			// Update nodes
 			for nodeID := range global.GNodes.N {
 				node := global.GNodes.N[nodeID]
 				containers, err := node.Client.ContainerList(context.Background(), container.ListOptions{
-					All: true,
+					All: false,
 				})
 				if err != nil {
 					continue
 				}
 				for _, cont := range containers {
-					if cnt, ok := node.Containers[cont.ID]; ok {
-						cnt.Spec = cont
-						node.Containers[cont.ID] = cnt
+					for k, cnt := range node.Containers {
+						if strings.Contains(k, cont.ID) {
+							cnt.Spec = cont
+							node.Containers[k] = cnt
+						}
 					}
 				}
 
@@ -38,11 +39,6 @@ func init() {
 			}
 
 			global.GNodes.M.Unlock()
-
-			docker.OnUpdate()
-			for _, task := range tasks.Tasks {
-				task.OnUpdate()
-			}
 		}
 	}()
 }

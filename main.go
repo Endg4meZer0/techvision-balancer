@@ -4,6 +4,7 @@ import (
 	"log"
 	"techvision/balancer/global"
 	"techvision/balancer/parse"
+	"techvision/balancer/server"
 	_ "techvision/balancer/sync"
 
 	_ "github.com/joho/godotenv/autoload"
@@ -12,5 +13,5 @@ import (
 func main() {
 	global.GNodes = parse.ParseNodes()
 	log.Println("started")
-	SetupServer()
+	server.SetupServer()
 }

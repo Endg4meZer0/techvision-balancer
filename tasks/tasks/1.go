@@ -16,8 +16,8 @@ var T1 = Task1{
 			Image: "alpine",
 			Cmd:   []string{"ping", "docker.com"},
 			Labels: map[string]string{
-				"gpu":          "false",
-				"gpu.required": "0",
+				"gpu":          "true",
+				"gpu.required": "16",
 			},
 		},
 		ContainerHostConfig: container.HostConfig{
@@ -37,5 +37,3 @@ func (t Task1) GetSpec() types.TaskSpec {
 func (t Task1) PostAction(host string, containerID string, data interface{}) error {
 	return nil
 }
-
-func (t Task1) OnUpdate() {}

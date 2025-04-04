@@ -7,8 +7,7 @@ import (
 
 type Task interface {
 	GetSpec() types.TaskSpec
-	PostAction(host string, containerID string, data interface{}) error
-	OnUpdate()
+	PostAction(host string, containerID string, data any) error
 }
 
 var Tasks map[string]Task = map[string]Task{

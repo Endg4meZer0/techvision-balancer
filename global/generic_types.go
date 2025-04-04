@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -54,15 +55,16 @@ func (n *Node) IsPortTaken(port uint16) bool {
 	return false
 }
 func (n *Node) GetContainerByID(id string) (Container, error) {
-	for key, cont := range n.Containers {
-		if id == key {
-			return cont, nil
+	for key := range n.Containers {
+		if fmt.Sprintf("%s_%s", n.Containers[key].TaskID, n.Containers[key].Spec.ID) == id {
+			return n.Containers[key], nil
 		}
 	}
 	return Container{}, errors.New("container not found")
 }
 
 type ContainerSpecDTO struct {
+	ID       string    `json:"id"`
 	Created  time.Time `json:"created"`
 	State    string    `json:"state"`
 	Status   string    `json:"status"`
@@ -88,6 +90,7 @@ func (n *Nodes) ToJSON() string {
 		for cntID, cnt := range node.Containers {
 			var contDTO ContainerDTO
 			contDTO.TaskID = cnt.TaskID
+			contDTO.Spec.ID = cnt.Spec.ID
 			contDTO.Spec.State = cnt.Spec.State
 			contDTO.Spec.Status = cnt.Spec.Status
 			contDTO.Spec.Created = time.Unix(cnt.Spec.Created, 0)
@@ -104,4 +107,12 @@ func (n *Nodes) ToJSON() string {
 
 	b, _ := json.Marshal(nodesDTO)
 	return string(b)
+}
+
+type JSONData struct {
+	PostStart json.RawMessage `json:"post_start,omitempty"`
+}
+
+type ErrorResponse struct {
+	Error string `json:"error"`
 }
