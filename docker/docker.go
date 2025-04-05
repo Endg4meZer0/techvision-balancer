@@ -107,15 +107,17 @@ func AddTask(taskID string, taskData global.JSONData) (any, error) {
 	if err != nil {
 		return "", nil
 	}
-	newName := fmt.Sprintf("%s.%v", spec.Name, 0)
+	idNum := 0
+	newName := fmt.Sprintf("%s.%v", spec.Name, idNum)
 	for _, v := range cntSums {
 		for _, cntName := range v.Names {
-			if splits := strings.Split(cntName, "."); strings.Contains(cntName, newName) && len(splits) != 1 {
-				idNum, err := strconv.Atoi(splits[1])
-				if err != nil {
+			if splits := strings.Split(cntName, "."); strings.Contains(cntName, spec.Name) && len(splits) != 1 {
+				idNum2, err := strconv.Atoi(splits[1])
+				if err != nil || idNum > idNum2 {
 					continue
 				}
-				newName = fmt.Sprintf("%s.%v", spec.Name, idNum+1)
+				newName = fmt.Sprintf("%s.%v", spec.Name, idNum2+1)
+				idNum = idNum2 + 1
 			}
 		}
 	}
